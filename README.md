@@ -42,3 +42,6 @@ timeout     Wait for any resets for some time before calling it a successful boo
               anything else   callback will be used to start next step
             This is usefull if a startupStep has to perform async stuff, like wait for WIFI connecting to an accesspoint.
 
+
+Successful bootSteps will be persisted in rtcmem if available or else in the filesystem.
+
