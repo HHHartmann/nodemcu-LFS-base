@@ -8,7 +8,7 @@ startup an esp8266
 * failsafe boot (avoid boot loops and the need to reflash firmware)
 
 ## Installation
-You need LFS enabled firmware.
+You need LFS enabled firmware from [nodemcu/nodemcu-firmware](https://github.com/nodemcu/nodemcu-firmware).
 
 Copy "LFS/wifiConfig.lua.sample" to "LFS/wifiConfig.lua" and adapt as needed
 Generate LFS image with `*.lua` files in LFS subdir.
@@ -19,7 +19,7 @@ on the MCU to flash the image.
 
 Reboot
 
-
+Watch the output for the IP adress. An [FTP server](https://github.com/nodemcu/nodemcu-firmware/tree/master/lua_modules/ftp) and a [telnet server](https://github.com/nodemcu/nodemcu-firmware/tree/master/lua_examples/telnet) will be available.
 
 
 ## bootprotect.lua
