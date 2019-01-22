@@ -1,4 +1,22 @@
-print('bootprotect.lua')
+--[[
+usage:
+`dofile("bootprotect.lua").start(signalpin, timeout, startupStep, ...)`
+
+This calls the given startupStep functions one by one.
+If one failes the next reboot will only execute the steps up to the one failing.
+If the system crashes before timeout seconds the next boot will execute one step less.
+So when messing up the application still basic stuff as FTP can be loaded and allow maintenance.
+signalPin   Pin to show boot status (maybe an LED)
+timeout     Wait for any resets for some time before calling it a successful boot (only wait at the end, not after each step)
+...         Functions which are called one by one
+            A Callback is passed to the functions to be called after async stuff is done
+            To tell the framework whether the callback will be used the function uses the return value
+              nil             callback will not be used. Proceed immediately with next step
+              anything else   callback will be used to start next step
+            This is usefull if a startupStep has to perform async stuff, like wait for WIFI connecting to an accesspoint.
+
+Successful bootSteps will be persisted in rtcmem if available or in filesystem else.
+]]
 
 -- configuration
 local RTCSlot = 17    -- will be used for tracking which steps have been executed between failed boots
@@ -97,20 +115,7 @@ end
 
 
 local protect = {}
---[[
-This calls the passed functions one by one.
-If one failes reboot only to the stage before failing.
-If system crashes before timeout seconds the next boot will execute one step less.
-So when messing up the application still basic stuff as FTP can be loaded and allow maintenance.
 
-signalPin   Pin to show boot status (maybe an LED)
-timeout     Wait for any resets for some time before calling it a success
-...         Functions which are called one by one
-            A Callback is passed to be called after async stuff is done
-            To tell the framework whether the callback will be used the function uses the return value
-              nil             callback will not be used. Proceed immediately with next step
-              anything else   callback will be used to start next step
-]]
 function protect.start(signalPin, timeout, ...)
 
   local startupFunctions = arg
