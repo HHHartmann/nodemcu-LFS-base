@@ -29,6 +29,16 @@ function starter.start(startApp_cb)
 		print('AP MAC: ',wifi.ap.getmac())
 		wifi.ap.config(wifiConfig.apConfig)
 		wifi.ap.setip(wifiConfig.apIpConfig)
+    dhcp_config ={}
+    dhcp_config.start = "192.168.1.100"
+    wifi.ap.dhcp.config(dhcp_config)
+    cfg =
+    {
+        ip="192.168.1.1",
+        netmask="255.255.255.0",
+        gateway="192.168.1.1"
+    }
+    wifi.ap.setip(cfg)    
 	end
 
 	print('chip: ',node.chipid())
