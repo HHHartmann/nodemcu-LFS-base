@@ -81,18 +81,19 @@ package.seeall = nil
 
 --[[-------------------------------------------------------------------------------
   These replaces the builtins loadfile & dofile with ones which preferentially 
-  loads the corresponding module from LFS if present.  Flipping the search order
-  is an exercise left to the reader.-
+  loads the files from SPIFFS if present and then passes on to LFS.
 ---------------------------------------------------------------------------------]]
 
 local lf, df = loadfile, dofile
 G.loadfile = function(n)
+  if file.exists(n) then return lf(n) end
   local mod, ext = n:match("(.*)%.(l[uc]a?)");
   local fn, ba   = index(mod)
   if ba or (ext ~= 'lc' and ext ~= 'lua') then return lf(n) else return fn end
 end
 
 G.dofile = function(n)
+  if file.exists(n) then return df(n) end
   local mod, ext = n:match("(.*)%.(l[uc]a?)");
   local fn, ba   = index(mod)
   if ba or (ext ~= 'lc' and ext ~= 'lua') then return df(n) else return fn() end
