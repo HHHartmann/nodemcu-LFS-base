@@ -11,9 +11,6 @@ if esp01 then
 end
 
 local function startup()
-	print('loading LFS')
-	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
-	dofile('_init.lua')
 	gpio.mode(1,gpio.OUTPUT)
 	gpio.write(1,gpio.LOW)
 	gpio.mode(2,gpio.OUTPUT)
@@ -38,8 +35,8 @@ local function netUtilities()
 end
 
 local function applicationStartup()
-	print('Starting Application')
-  dofile("ConcurrentFramework.lua")
+	print('Starting ApplicationStart.lua')
+  dofile("ApplicationStart.lua")
 	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
 end
 
