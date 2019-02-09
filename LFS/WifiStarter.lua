@@ -10,16 +10,16 @@ function starter.start(startApp_cb)
     wifiConfig = nil
     collectgarbage()
 
-    startApp_cb(ip)
-    if (mdns) then
+    if mdns then
       mdns.register("nodemcublack", { description="A tiny server", service="http", port=serverPort, location='Earth' })
     end
+    startApp_cb(ip)
   end
 
   
-	local wifiConfig = require("wifiConfig")
+	local wifiConfig = dofile("wifiConfig.lua")
 
-
+  local connected = wifi.sta.getip() or wifi.ap.getip()
 	-- Tell the chip to connect to the access point
 
 	wifi.setmode(wifiConfig.mode)
@@ -43,7 +43,7 @@ function starter.start(startApp_cb)
 
 	print('chip: ',node.chipid())
 	print('heap: ',node.heap())
-
+  
 
   if (wifi.getmode() == wifi.STATION) or (wifi.getmode() == wifi.STATIONAP) then
 
@@ -51,6 +51,7 @@ function starter.start(startApp_cb)
     -- If the server loses connectivity, server will restart.
     wifi.eventmon.register(wifi.eventmon.STA_GOT_IP, function(args)
       print("Connected to WiFi Access Point. Got IP: " .. args["IP"])
+      connected = true
       startApp(args["IP"])
       wifi.eventmon.register(wifi.eventmon.STA_DISCONNECTED, function(args)
         print("Lost connectivity! Restarting...")
@@ -58,20 +59,34 @@ function starter.start(startApp_cb)
       end)
     end)
 
+    local function gotAps(allAps)
+      if connected then 
+        print("already connected, no configuration needed")
+        return
+      end
+      for k,available in pairs(allAps) do
+        local availableSsid = string.match(available, "([^,]*),.*")
+        --print(k.." : "..available.." name: ", availableSsid)
+        for k,configured in pairs(wifiConfig.staConfig) do
+          if configured.ssid == availableSsid then
+            print("configuring ", configured.ssid)
+            wifi.sta.config(configured)
+            return
+          end
+        end
+      end
+    end
+    
     if (wifiConfig.mode == wifi.STATION) or (wifiConfig.mode == wifi.STATIONAP) then
       print('Client MAC: ',wifi.sta.getmac())
-      for k,v in pairs(wifiConfig.staConfig) do
-        print("configuring ", v.ssid)
-        wifi.sta.config(v)
-      end
+      wifi.sta.getap(1, gotAps)
     end
 
 
     -- What if after a while (30 seconds) we didn't connect? Restart and keep trying.
     local watchdogTimer = tmr.create()
     watchdogTimer:register(30000, tmr.ALARM_SINGLE, function (watchdogTimer)
-    local ip = wifi.sta.getip()
-      if (not ip) then ip = wifi.ap.getip() end
+      local ip = wifi.sta.getip() or wifi.ap.getip()
       if ip == nil then
         print("No IP after a while. Restarting...")
         node.restart()
@@ -79,7 +94,7 @@ function starter.start(startApp_cb)
         --print("Successfully got IP. Good, no need to restart.")
         watchdogTimer:unregister()
       end
-      end)
+    end)
     watchdogTimer:start()
   else
     startApp(wifi.ap.getip())
