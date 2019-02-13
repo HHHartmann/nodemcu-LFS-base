@@ -23,6 +23,10 @@ local function startup()
 	
 end
 
+local function logger()
+  require("Logger")
+end
+
 local function netUtilities()
 	
 	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
@@ -31,6 +35,12 @@ local function netUtilities()
 	require("ftpserver").createServer("test","12345","dbg")
 	print('Starting telnet server')
 	require("telnet"):open()
+	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
+end
+
+local function httpServer()
+	print('Starting http server')
+	dofile("IDESupport.lua")
 	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
 end
 
@@ -52,4 +62,4 @@ end
 
 print('calling bootprotect')
 
-dofile("bootprotect.lua").start(signalpin, 10,   startup, startNetwork, netUtilities, applicationStartup)
+dofile("bootprotect.lua").start(signalpin, 10,   logger, startup, startNetwork, netUtilities, httpServer, applicationStartup)
