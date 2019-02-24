@@ -39,11 +39,15 @@ end
 
 require("httpserver").createServer(80, function(req, res)
   -- analyse method and url
-  print("+R", req.method, req.url, node.heap())
+  if req.url ~= "/log" then
+    print("+R", req.method, req.url, node.heap())
+  end
   local uri = parseUri(req.url)
   local size
-  print("filename:", uri.args.name)  
-  print("command:", uri.path)
+  if req.url ~= "/log" then
+    print("filename:", uri.args.name)  
+    print("command:", uri.path)
+  end
   local tempFileName = "__temp_test_file"
   local myFile
 
@@ -94,6 +98,7 @@ require("httpserver").createServer(80, function(req, res)
   elseif uri.path == "/restart" then
     res:send(nil, 201)
     res:send_header("Connection", "close")
+    res:send_header("Access-Control-Allow-Origin", "*")
     res:finish()
     local f = function() print("posting restart") node.task.post(node.restart) end
     res.csend(f)
@@ -101,13 +106,19 @@ require("httpserver").createServer(80, function(req, res)
     res:send(nil, 200)
     res:send_header("Connection", "close")
     res:send_header("Content-Type", "text/plain")
+    res:send_header("Access-Control-Allow-Origin", "*")
     res:send(Logger.getlog())
+    res:send(Logger.getlog())
+    res:send(Logger.getlog())
+    res:send(Logger.getlog())
+    collectgarbage()
     res:finish()
   elseif uri.path == "/info" then
     res:send(nil, 200)
     res:send_header("Connection", "close")
     res:send_header("Content-Type", "text/json")
-    local info = {name = "Nelli", heap = node.heap()}
+    res:send_header("Access-Control-Allow-Origin", "*")
+    local info = {name = "Nelli", heap = node.heap(), id = node.chipid()}
     info = sjson.encode(info)
     res:send(info)
     res:finish()
