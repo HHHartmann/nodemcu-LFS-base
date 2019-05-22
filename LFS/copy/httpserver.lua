@@ -22,14 +22,14 @@ do
   ------------------------------------------------------------------------------
   -- response methods
   ------------------------------------------------------------------------------
-  local send = function(self, data, status)
-    local cs = self.csend
+  local make_res = function(csend, cfini)
+   local send = function(self, data, status)
     -- TODO: req.send should take care of response headers!
     if self.send_header then
-      cs("HTTP/1.1 ")
-      cs(tostring(status or 200))
+      csend("HTTP/1.1 ")
+      csend(tostring(status or 200))
       -- TODO: real HTTP status code/name table
-      cs(" OK\r\n")
+      csend(" OK\r\n")
       -- we use chunked transfer encoding, to not deal with Content-Length:
       --   response header
       self:send_header("Transfer-Encoding", "chunked")
@@ -40,38 +40,34 @@ do
       if self.send_header then
         self.send_header = nil
         -- end response headers
-        cs("\r\n")
+        csend("\r\n")
       end
       -- chunked transfer encoding
-      cs(("%X\r\n"):format(#data))
-      cs(data)
-      cs("\r\n")
+      csend(("%X\r\n"):format(#data))
+      csend(data)
+      csend("\r\n")
     end
-  end
-  local send_header = function(self, name, value)
-    local cs = self.csend
+   end
+   local send_header = function(self, name, value)
     -- NB: quite a naive implementation
-    cs(name)
-    cs(": ")
-    cs(value)
-    cs("\r\n")
-  end
-  -- finalize request, optionally sending data
-  local finish = function(self, data, status)
+    csend(name)
+    csend(": ")
+    csend(value)
+    csend("\r\n")
+   end
+   -- finalize request, optionally sending data
+   local finish = function(self, data, status)
     -- NB: res.send takes care of response headers
     if data then
       self:send(data, status)
     end
     -- finalize chunked transfer encoding
-    self.csend("0\r\n\r\n")
+    csend("0\r\n\r\n")
     -- close connection
-    self.cfini()
-  end
-  --
-  local make_res = function(csend, cfini)
+    cfini()
+   end
+   --
     local res = { }
-    res.csend = csend
-    res.cfini = cfini
     res.send_header = send_header
     res.send = send
     res.finish = finish
@@ -83,7 +79,7 @@ do
   ------------------------------------------------------------------------------
   local http_handler = function(handler)
     return function(conn)
-      local csend = (require "fifosock")(conn)
+      local csend = (require "fifosock").wrap(conn)
       local cfini = function()
         conn:on("receive", nil)
         conn:on("disconnection", nil)
@@ -93,6 +89,7 @@ do
       local buf = ""
       local method, url
       local ondisconnect = function(conn)
+	conn.on("sent", nil)
         collectgarbage("collect")
       end
       -- header parser
@@ -105,7 +102,7 @@ do
           cnt_len = tonumber(v)
         end
         if k == "expect" and v == "100-continue" then
-          cs("HTTP/1.1 100 Continue\r\n")
+          csend("HTTP/1.1 100 Continue\r\n")
         end
         -- delegate to request object
         if req and req.onheader then
