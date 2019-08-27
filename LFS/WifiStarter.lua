@@ -64,16 +64,24 @@ function starter.start(startApp_cb)
         print("already connected, no configuration needed")
         return
       end
+      local selectedConfiguration, bestRssi = nil, -9999
       for k,available in pairs(allAps) do
-        local availableSsid = string.match(available, "([^,]*),.*")
-        --print(k.." : "..available.." name: ", availableSsid)
+        local availableSsid, rssiStr = string.match(available, "([^,]+),([^,]+),.*")
+        local rssi = tonumber(rssiStr)
+        print(k.." : "..available.." name: ", availableSsid)
         for k,configured in pairs(wifiConfig.staConfig) do
           if configured.ssid == availableSsid then
-            print("configuring ", configured.ssid)
-            wifi.sta.config(configured)
-            return
+            print("found ", configured.ssid)
+            if (bestRssi < rssi) then
+              bestRssi = rssi
+              selectedConfiguration = configured
+            end
           end
         end
+      end
+      if (selectedConfiguration) then
+          print("configuring ", configured.ssid)
+          wifi.sta.config(selectedConfiguration)
       end
     end
     
