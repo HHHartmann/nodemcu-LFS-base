@@ -80,7 +80,7 @@ function starter.start(startApp_cb)
         end
       end
       if (selectedConfiguration) then
-          print("configuring ", configured.ssid)
+          print("configuring ", selectedConfiguration.ssid)
           wifi.sta.config(selectedConfiguration)
       end
     end
