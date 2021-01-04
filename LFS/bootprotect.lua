@@ -75,7 +75,7 @@ local function RunNextStep()
 end
 
 RunSteps = function(firstFunc, ...)
-  steps = arg
+  steps = {...}
   if (stepsStarted +1 == stepsLastBoot) then
     print("Aborting boot due to invalid boot last time.")
     steps = {}
@@ -118,7 +118,7 @@ local protect = {}
 
 function protect.start(signalPin, timeout, ...)
 
-  local startupFunctions = arg
+  local startupFunctions = {...}
   local dummy,reason = node.bootreason()
   lTimeout = timeout
   
