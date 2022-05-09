@@ -3,9 +3,11 @@ usage:
 `dofile("bootprotect.lua").start(signalpin, timeout, startupStep, ...)`
 
 This calls the given startupStep functions one by one.
-If one failes the next reboot will only execute the steps up to the one failing.
-If the system crashes before timeout seconds the next boot will execute one step less.
-So when messing up the application still basic stuff as FTP can be loaded and allow maintenance.
+If one step failes or the system crashes before "timeout" seconds the next boot will execute up to the step
+before failure and the wait "timeout" before executing the next steps.
+During this period the boot can be aborted by enter ing the command "stop()"
+If not stopped the remaining steps will be executed after the timeout.
+So when messing up the application, basic stuff as FTP can still be loaded and allow maintenance.
 signalPin   Pin to show boot status (maybe an LED)
 timeout     Wait for any resets for some time before calling it a successful boot (only wait at the end, not after each step)
 ...         Functions which are called one by one
@@ -29,6 +31,7 @@ local function StartingStep(n)
     rtcmem.write32(RTCSlot, n)
   else
     local f = file:open('PANIC_GUARD','w')
+    f:write(n)
     f:close()
   end
 end
@@ -66,7 +69,7 @@ local stepsLastBoot = LastStepLastBoot()
 local RunSteps, finishStartup, lTimeout
 
 local function RunNextStep()
-  -- check if not empty (the first enrtry ~= nil)
+  print("RunNextStep: steps left:", #steps)
   if #steps > 0 then
     RunSteps(unpack(steps))
   else
@@ -74,12 +77,28 @@ local function RunNextStep()
   end
 end
 
+local waitfunc = function(nextStep)
+  function stop()
+    steps = {}
+    stepsLastBoot = 9999
+  end
+
+  tmr.create():alarm(lTimeout*1000 or 10000, tmr.ALARM_SINGLE ,function()
+      stop = nil
+      print('removing PANIC_GUARD')
+      RemoveGuard()
+      nextStep()
+    end)
+  return true -- actually anything but nil to let the system know that we are executing async
+end
+
 RunSteps = function(firstFunc, ...)
   steps = {...}
   if (stepsStarted +1 == stepsLastBoot) then
-    print("Aborting boot due to invalid boot last time.")
-    steps = {}
-    RunNextStep()
+    print("Delaying boot due to invalid boot last time. Enter stop() to stop running further steps ")
+    steps = {firstFunc, ...}
+    stepsLastBoot = 0
+    waitfunc(RunNextStep)
     return
   end
   stepsStarted = stepsStarted + 1
@@ -96,9 +115,9 @@ finishStartup = function()
       if signalPin then
         pwm.setup(signalPin, 2, 0)
         pwm.setduty(signalPin, 900)
-		  pwm.start(signalPin)
+        pwm.start(signalPin)
       end
-      print('aborting autostart since last run crashed too early')
+      print('aborting autostart since stop() was called')
       print('Wait for PANIC_GUARD removal and then')
       print('just restart to resume normal operation')
   end
@@ -128,10 +147,7 @@ function protect.start(signalPin, timeout, ...)
     signalPin = nil
   end
   if signalPin then
-      gpio.mode(signalPin, gpio.OUTPUT)
-  end
-
-  if signalPin then
+    gpio.mode(signalPin, gpio.OUTPUT)
     pwm.setup(signalPin, 1, 0)
     pwm.setduty(signalPin, 512)
     pwm.start(signalPin)

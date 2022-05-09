@@ -30,25 +30,69 @@ do
       csend(tostring(status or 200))
       -- TODO: real HTTP status code/name table
       csend(" OK\r\n")
-      -- we use chunked transfer encoding, to not deal with Content-Length:
-      --   response header
-      self:send_header("Transfer-Encoding", "chunked")
       -- TODO: send standard response headers, such as Server:, Date:
     end
     if data then
       -- NB: no headers allowed after response body started
       if self.send_header then
+        -- we use chunked transfer encoding, to not deal with Content-Length:
+        --   response header
+        self:send_header("Transfer-Encoding", "chunked")
         self.send_header = nil
         -- end response headers
         csend("\r\n")
       end
-      -- chunked transfer encoding
-      csend(("%X\r\n"):format(#data))
-      csend(data)
-      csend("\r\n")
+      
+      local addChunks = function(data)
+        local state = 1
+        local chunk
+        local function chunker()
+          if state == 1 then
+            -- send chunked information
+            chunk, data = data()
+            if #(chunk or "") > 0 then
+              state = 2
+              return ("%X\r\n"):format(#chunk), data and chunker
+            else
+              print("chunk 1 no chunk ", chunk, data)
+              return nil, data and chunker
+            end
+          elseif state == 2 then
+            -- send actual data
+            state = 3
+            local localchunk = chunk
+            chunk = nil
+            return localchunk, chunker
+          elseif state == 3 then
+            -- finish chunk
+            state = 1
+            return "\r\n", chunker
+          end
+        end
+        return chunker
+      end
+      
+      if type(data) == "function" then
+        if status then
+          -- If total length of data is given, just send 1 chunk
+          print("adding big chunk sending method")
+          csend(("%X\r\n"):format(status))
+          csend(data)
+          csend("\r\n")
+        else
+          -- chunked transfer encoding for each chunk the function returns
+          csend(addChunks(data))
+        end
+      else
+        -- chunked transfer encoding
+        csend(("%X\r\n"):format(#data))
+        csend(data)
+        csend("\r\n")
+      end
     end
    end
-   local send_header = function(self, name, value)
+
+   local send_header = function(_, name, value)
     -- NB: quite a naive implementation
     csend(name)
     csend(": ")
@@ -80,21 +124,31 @@ do
   local http_handler = function(handler)
     return function(conn)
       local csend = (require "fifosock").wrap(conn)
-      local cfini = function()
-        conn:on("receive", nil)
-        conn:on("disconnection", nil)
-        csend(function() conn:on("sent", nil) conn:close() end)
-      end
+
       local req, res
       local buf = ""
       local method, url
-      local ondisconnect = function(conn)
-	conn.on("sent", nil)
+
+      local ondisconnect = function(connection)
+        connection:on("receive", nil)
+        connection:on("disconnection", nil)
+        connection:on("sent", nil)
         collectgarbage("collect")
       end
+
+      local cfini = function()
+        csend(function()
+          conn:on("sent", nil)
+          conn:close()
+          ondisconnect(conn)
+        end)
+      end
+
+
       -- header parser
       local cnt_len = 0
-      local onheader = function(conn, k, v)
+
+      local onheader = function(_, k, v)
         -- TODO: look for Content-Type: header
         -- to help parse body
         -- parse content length to know body length
@@ -109,21 +163,23 @@ do
           req:onheader(k, v)
         end
       end
+
       -- body data handler
       local body_len = 0
-      local ondata = function(conn, chunk)
+      local ondata = function(_, chunk)
         -- feed request data to request handler
         if not req or not req.ondata then return end
         req:ondata(chunk)
         -- NB: once length of seen chunks equals Content-Length:
-        --   onend(conn) is called
+        -- ondata(conn) is called
         body_len = body_len + #chunk
         -- print("-B", #chunk, body_len, cnt_len, node.heap())
         if body_len >= cnt_len then
           req:ondata()
         end
       end
-      local onreceive = function(conn, chunk)
+
+      local onreceive = function(connection, chunk)
         -- merge chunks in buffer
         if buf then
           buf = buf .. chunk
@@ -139,12 +195,14 @@ do
           buf = buf:sub(e + 2)
           -- method, url?
           if not method then
-            local i
-            -- NB: just version 1.1 assumed
-            _, i, method, url = line:find("^([A-Z]+) (.-) HTTP/1.1$")
+            do
+              local _
+              -- NB: just version 1.1 assumed
+              _, _, method, url = line:find("^([A-Z]+) (.-) HTTP/1.1$")
+            end
             if method then
               -- make request and response objects
-              req = make_req(conn, method, url)
+              req = make_req(connection, method, url)
               res = make_res(csend, cfini)
             end
             -- spawn request handler
@@ -156,22 +214,23 @@ do
             -- header seems ok?
             if k then
               k = k:lower()
-              onheader(conn, k, v)
+              onheader(connection, k, v)
             end
           -- headers end
           else
-            -- NB: we feed the rest of the buffer as starting chunk of body
-            ondata(conn, buf)
-            -- buffer no longer needed
-            buf = nil
             -- NB: we explicitly reassign receive handler so that
             --   next received chunks go directly to body handler
-            conn:on("receive", ondata)
+            connection:on("receive", ondata)
+            -- NB: we feed the rest of the buffer as starting chunk of body
+            ondata(connection, buf)
+            -- buffer no longer needed
+            buf = nil
             -- parser done
             break
           end
         end
       end
+
       conn:on("receive", onreceive)
       conn:on("disconnection", ondisconnect)
     end

@@ -5,21 +5,20 @@ local starter = {}
 
 function starter.start(startApp_cb)
 
+	local wifiConfig = dofile("wifiConfig.lua")
+
   local startApp = function(ip)
 
     wifiConfig = nil
     collectgarbage()
 
     if mdns then
-      mdns.register("nodemcublack", { description="A tiny server", service="http", port=serverPort, location='Earth' })
+      mdns.register("nodemcu.local", { description="A tiny server", service="http", port=serverPort, location='Earth' })
     end
     startApp_cb(ip)
   end
 
-  
-	local wifiConfig = dofile("wifiConfig.lua")
-
-  local connected = wifi.sta.getip() or wifi.ap.getip()
+  local connected
 	-- Tell the chip to connect to the access point
 
 	wifi.setmode(wifiConfig.mode)
@@ -51,7 +50,6 @@ function starter.start(startApp_cb)
     -- If the server loses connectivity, server will restart.
     wifi.eventmon.register(wifi.eventmon.STA_GOT_IP, function(args)
       print("Connected to WiFi Access Point. Got IP: " .. args["IP"])
-      connected = true
       startApp(args["IP"])
       wifi.eventmon.register(wifi.eventmon.STA_DISCONNECTED, function(args)
         print("Lost connectivity! Restarting...")
@@ -60,9 +58,10 @@ function starter.start(startApp_cb)
     end)
 
     local function gotAps(allAps)
+      local connected = wifi.sta.getip()
       if connected then 
         print("already connected, no configuration needed")
-        return
+        return startApp(wifi.sta.getip())
       end
       local selectedConfiguration, bestRssi = nil, -9999
       for k,available in pairs(allAps) do

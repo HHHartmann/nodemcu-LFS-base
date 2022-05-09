@@ -30,6 +30,7 @@ local function wrap(sock)
 
     if type(s) == "function" then
       if sslan ~= 0 then
+        print("sending before function ",#ssla)
         sock:send(ssla)
         ssla, sslan = nil, 0; gc()
         return s, false -- stay as is and wait for :on("sent")
@@ -58,11 +59,17 @@ local function wrap(sock)
     -- Either that was a function or we've hit our coalescing limit or
     -- we didn't ship above.  Ship now, if there's something to ship.
     if s ~= nil then
-      if sslan == 0 then sock:send(s) else sock:send(ssla .. s) end
+      if sslan == 0 then
+        sock:send(s)
+      else
+        print("sending ssla .. s ",#ssla, #s)
+        sock:send(ssla .. s)
+      end
       ssla, sslan = nil, 0; gc()
       return ns or nil, false
     elseif sslan ~= 0 then
       assert (ns == nil)
+      print("sending ssla ",#ssla)
       sock:send(ssla)
       ssla, sslan = nil, 0; gc()
       return nil, false

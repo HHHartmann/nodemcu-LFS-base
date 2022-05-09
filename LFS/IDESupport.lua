@@ -101,7 +101,7 @@ require("httpserver").createServer(80, function(req, res)
     res:send_header("Access-Control-Allow-Origin", "*")
     res:finish()
     local f = function() print("posting restart") node.task.post(node.restart) end
-    res.csend(f)
+    res:csend(f)
   elseif uri.path == "/log" then
     res:send(nil, 200)
     res:send_header("Connection", "close")
@@ -122,8 +122,6 @@ require("httpserver").createServer(80, function(req, res)
     info = sjson.encode(info)
     res:send(info)
     res:finish()
-    local f = function() print("posting restart") node.task.post(node.restart) end
-    res.csend(f)
   else
     res:send(nil, 404)
     res:send_header("Connection", "close")

@@ -1,83 +1,69 @@
---[[  A telnet server   T. Ellison,  May 2018
+--[[  A telnet server   T. Ellison,  June 2019
 
-This version is more complex than the simple Lua example previously provided in our
-distro.  The main reason is that a single Lua command can produce a LOT of output,
-and the server has to work within four constraints:
-
-  -  The SDK rules are that you can only issue one send per task invocation, so any
-     overflow must be buffered, and the buffer emptied using an on:sent cb
-
-  -  Since the interpeter invokes a node.output cb per field, you have a double
-     whammy that these fields are typically small, so using a simple array FIFO
-     would rapidly exhaust RAM.
-
-  -  For network efficiency, you want to aggregate any FIFO buffered into sensible
-     sized packet, say 1024 bytes, but you also need to handle the case when larger
-     string span multiple packets. However, you must flush the buffer if necessary.
-
-  -  The overall buffering strategy needs to be reasonably memory efficient and avoid
-     hitting the GC too hard, so where practical avoid aggregating small strings to
-     more than 256 chars (as NodeMCU handles <256 using stack buffers), and avoid
-     serial aggregation such as buf = buf .. str as this hammers the GC.
-
-So this server adopts a simple buffering scheme using a two level FIFO. The node.output
-cb adds cb records to the 1st level FIFO until the #recs is > 32 or the total size
-would exceed 256 bytes. Once over this threashold, the contents of the FIFO are
-concatenated into a 2nd level FIFO entry of upto 256 bytes, and the 1st level FIFO
-cleared down to any residue.
+This version of the telnet server demonstrates the use of the new stdin and stout
+pipes, which is a C implementation of the Lua fifosock concept moved into the
+Lua core.  These two pipes are referenced in the Lua registry.
 
 ]]
-local node, table, tmr, wifi, uwrite,     tostring =
-      node, table, tmr, wifi, uart.write, tostring
+--luacheck: no unused args
 
-local function telnet_listener(socket) 
-  local queueLine = (require "fifosock").wrap(socket)
+local M = {}
+local modname = ...
+local function telnet_session(socket)
+  local node = node
+  local stdout
 
-  local function receiveLine(s, line)
-    node.input(line)
+  local function output_CB(opipe)   -- upval: socket
+    stdout = opipe
+    local rec = opipe:read(1400)
+    if rec and #rec > 0 then socket:send(rec) end
+    return false -- don't repost as the on:sent will do this
   end
 
-  local function disconnect(s)
-    socket:on("disconnection", nil)
-    socket:on("reconnection", nil)
-    socket:on("connection", nil)
-    socket:on("receive", nil)
-    socket:on("sent", nil)
-    node.output(nil)
+  local function onsent_CB(skt)     -- upval: stdout
+    local rec = stdout:read(1400)
+    if rec and #rec > 0 then skt:send(rec) end
   end
 
-  socket:on("receive",       receiveLine)
-  socket:on("disconnection", disconnect)
-  node.output(queueLine, 0)
-  print(("Welcome to NodeMCU world (%d mem free, %s)"):format(node.heap(), wifi.sta.getip()))
+  local function disconnect_CB(skt) -- upval: socket, stdout
+    node.output()
+    socket, stdout = nil, nil -- set upvals to nl to allow GC
+  end
+
+  node.output(output_CB, 0)
+  socket:on("receive", function(_,rec) node.input(rec) end)
+  socket:on("sent", onsent_CB)
+  socket:on("disconnection", disconnect_CB)
+  print(("Welcome to NodeMCU world (%d mem free, %s)"):format(
+        node.heap(), wifi.sta.getip()))
 end
 
-local listenerSocket
-return {
-  open = function(this, ssid, pwd, port)
-    if ssid then
-      wifi.setmode(wifi.STATION, false)
-      wifi.sta.config { ssid = ssid, pwd  = pwd, save = false }
+function M.open(this, ssid, pwd, port)
+  local tmr, wifi, uwrite = tmr, wifi, uart.write
+  if ssid then
+    wifi.setmode(wifi.STATION, false)
+    wifi.sta.config { ssid = ssid, pwd  = pwd, save = false }
+  end
+  local t = tmr.create()
+  t:alarm(500, tmr.ALARM_AUTO, function()
+    if (wifi.sta.status() == wifi.STA_GOTIP) then
+      t:unregister()
+      t=nil
+      print(("Telnet server started (piped)(%d mem free, %s)"):format(
+             node.heap(), wifi.sta.getip()))
+      M.svr = net.createServer(net.TCP, 180)
+      M.svr:listen(port or 23, telnet_session)
+    else
+      uwrite(0,".")
     end
-    local t = tmr.create()
-    t:alarm(500, tmr.ALARM_AUTO, function()
-      if (wifi.sta.status() == wifi.STA_GOTIP) then
-        t:unregister()
-        t=nil
-        print(("Telnet server started (%d mem free, %s)"):format(node.heap(), wifi.sta.getip()))
-        net.createServer(net.TCP, 180):listen(port or 23, telnet_listener)
-      else
-        uwrite(0,".")
-      end
-    end)
-  end,
+  end)
+end
 
-  close = function(this)
-    if listenerSocket then
-      listenerSocket:close()
-      package.loaded.telnet = nil
-      listenerSocket = nil
-      collectgarbage()
-    end
-  end,
-}
+function M.close(this)
+  if this.svr then this.svr:close() end
+  package.loaded[modname] = nil
+end
+
+return M
+
+
