@@ -59,11 +59,11 @@ local function netUtilities()
   end
 end
 
-local function runGossip()
+local function gossipStartup()
 	print('Starting gossip')
   local gossipConfig = {
       seedList = {},
-      roundInterval = 3000,
+      roundInterval = 30000,
       comPort = 5000,
       debug = true,
       debugOutput = function(message) print('Gossip says: ', message); end
@@ -97,4 +97,4 @@ end
 print('calling bootprotect')
 
 
-dofile("bootprotect.lua").start(signalpin, 10,   logger, startup, startNetwork, netUtilities, runGossip, httpServer, applicationStartup)
+dofile("bootprotect.lua").start(signalpin, 10,   logger, startup, startNetwork, netUtilities, gossipStartup, httpServer, applicationStartup)

@@ -161,7 +161,9 @@ network.updateNetworkState = function(updateData)
     if not utils.contains(gossip.config.seedList, ip) and ip ~= network.broadcastIp and ip ~= gossip.ip then
       table.insert(gossip.config.seedList, ip);
     end
-    gossip.networkState[ip] = data;
+    if ip ~= gossip.ip then
+      gossip.networkState[ip] = data;
+    end
   end
 end
 
