@@ -5,6 +5,7 @@
 -- Gregor Hartmann https://github.com/HHHartmann
 ------------------------------------------------------------------------------
 local collectgarbage, tonumber, tostring = collectgarbage, tonumber, tostring
+local utils = {}
 
 --local WebServer
 WebServer = {}
@@ -56,6 +57,7 @@ do
     print("URL:", req.url)
     if throttled(res) then return end
     local context = {req=req, res=res, pluginNr=1}
+    context.res.utils = utils
     executePlugin(context)
   end
 
@@ -90,42 +92,62 @@ do
   local function autoRouteStaticPlugin(req, res, Next, params)
     local filename = (params.prefix or "") .. (req.url or ""):gsub("/","_")
     print("cheking file:", filename)
-    local sendFile = file.open(filename)
-    if sendFile then
-      local length = file.stat(filename)
-      length = length.size
-      res:send(nil, 200)
-      --res:send_header("Content-Length", length)  -- we use chunked encoding
-      local extension = filename:match(".*%.(.*)") or ""
-      extension = extension:lower()
-      local mimetypes = {
-            json = "application/json",
-            js = "application/javascript",
-            html = "text/html",
-            htm = "text/html",
-            css = "text/css"
-          }
-      local mimetype = mimetypes[extension] or "text/plain"
-      mimetypes = nil
-      print(node.heap())
-      print("Content-Type", mimetype)
-      res:send_header("Content-Type", mimetype)
-      local function f()
-        collectgarbage()
-        local buf = sendFile:read(256)
-        if buf then
-          return buf,f
-        end
-        sendFile:close()
-      end
-      collectgarbage()
-      print(node.heap())
-      print("pushing first f")
-      res:send(f, length)
-      res:finish()
-    else
-      Next() -- url unhandled. Try others (down to inherent 404)
+    local testFile = file.open(filename)
+
+    if not testFile then
+      return Next() -- url unhandled. Try others (down to inherent 404)
     end
+    utils.sendFile(req, res, filename, 0)
+  end
+
+  ------------------------------------------------------------------------------
+  -- utilities
+  ------------------------------------------------------------------------------
+
+  function utils.sendFile(req, res, filename, start)
+    start = start or 0
+    print("serving:", filename, "start:", start)
+    local sendFile = file.open(filename)
+    local length = file.stat(filename)
+    length = length.size
+    sendFile:seek("set", start)
+    length = length - start
+    if length < 0 then length = 0 end
+    res:send(nil, 200)
+    --res:send_header("Content-Length", length)  -- we use chunked encoding
+    local extension = filename:match(".*%.(.*)") or ""
+    extension = extension:lower()
+    local mimetypes = {
+          json = "application/json",
+          js = "application/javascript",
+          html = "text/html",
+          htm = "text/html",
+          css = "text/css",
+          txt = "text/plain",
+          jpg = "image/jpeg",
+          jpeg = "image/jpeg"
+        }
+    local mimetype = mimetypes[extension] or "text/plain"
+    mimetypes = nil
+    print(node.heap())
+    print("Content-Type", mimetype)
+    res:send_header("Content-Type", mimetype)
+    local function f()
+      collectgarbage()
+      local buf = sendFile:read(256)
+      print("sending chunk", filename)
+      if buf then
+        return buf, f
+      end
+      print("done sending", filename)
+      sendFile:close()
+      -- implicitly return nil, nil
+    end
+    collectgarbage()
+    print(node.heap())
+    print("pushing first f")
+    res:send(f, length)   -- send length bytes served by data function f
+    res:finish()
   end
 
 
@@ -140,7 +162,6 @@ TODO
     send file
     send redirect ??
     parse URL into params and ancor
-  add plugin autoRouteStatic
   add plugin autoRouteAPI
   add HTTP Method selector
   add concept for receiving long files
@@ -157,7 +178,7 @@ TODO
       use(route, {url="/info", exec=SendInfo })
   ]]
   local function use(plugin, params)
-    print("Adding plugin nr", #plugins+1, plugin, params)
+    print("Adding plugin nr", #plugins+1, params and params.desc )
     plugins[#plugins+1] = {plugin=plugin, params=params}
   end
 
@@ -172,7 +193,7 @@ TODO
       WebServer.route("/info", function(req, res) res:finish("Info Text", 200) end)
   ]]
   local function route(url, func)
-    use(routePlugin, {url=url, exec=func})
+    use(routePlugin, {url=url, exec=func, desc=("API for '%s'"):format(url)})
   end
 
 
@@ -184,24 +205,26 @@ TODO
       func  the function(req, res) to be called. res and req are as passed by httpserver
 
   usage:
-      WebServer.route("/switch/.*", function(req, res) res:finish("Info Text", 200) end)
+      WebServer.routes("/switch/.*", function(req, res) res:finish("Info Text", 200) end)
   ]]
   local function routes(pattern, func)
-    use(routePlugin, {pattern=pattern, exec=func})
+    use(routePlugin, {pattern=pattern, exec=func, desc=("APIs for '%s'"):format(pattern)})
   end
 
 
   --[[
   staticRoute(prefix)
+    download a file beginning with "prefix" and ending with the URL given
+    "/" will be replaced by "_"
     params
-      url   the url to be handled by this usage
-      func  the function(req, res) to be called. res and req are as passed by httpserver
+      prefix   the prefix which is prepended to the URL to find the filename
 
   usage:
-      WebServer.staticRoute("www_")
+      WebServer.staticRoute("www")
+      will serve file www_news_today when called with URL /news/today
   ]]
   local function staticRoute(prefix)
-    use(autoRouteStaticPlugin, {prefix=prefix})
+    use(autoRouteStaticPlugin, {prefix=prefix, desc=("static for '%s'"):format(prefix)})
   end
 
 
