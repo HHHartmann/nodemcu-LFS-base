@@ -60,20 +60,22 @@ local function netUtilities()
 end
 
 local function gossipStartup()
-	print('Starting gossip')
-  local gossipConfig = {
-      seedList = {},
-      roundInterval = 30000,
-      comPort = 5000,
-      debug = true,
-      debugOutput = function(message) print('Gossip says: ', message); end
-  }
+  if config.runGossip then
+    print('Starting gossip')
+    local gossipConfig = {
+        seedList = {},
+        roundInterval = 30000,
+        comPort = 5000,
+        debug = true,
+        debugOutput = function(message) print('Gossip says: ', message); end
+    }
 
-  gossip = require ("gossip")
-  gossip.setConfig(gossipConfig)
-  gossipConfig = nil
-  gossip.start()
-  gossip.pushGossip(nil, '255.255.255.255')  -- broadcast to announce new instance
+    gossip = require ("gossip")
+    gossip.setConfig(gossipConfig)
+    gossipConfig = nil
+    gossip.start()
+    gossip.pushGossip(nil, '255.255.255.255')  -- broadcast to announce new instance
+  end
 end
 
 local function httpServer()
