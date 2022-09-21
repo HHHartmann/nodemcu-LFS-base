@@ -41,11 +41,13 @@ do
   end
 
   local lastHandledRequestTime = 0
-  local function throttled(res)
+  local function throttled(req, res)
     if lastHandledRequestTime +1 > tmr.time() then
-      print("sending 503 Service Unavailable")
-      res:send(nil, 503)
+      print("sending 302 Found")
+      res:send(nil, 302)
       res:send_header("Retry-After", 1)
+      res:send_header("Location", req.url)
+      res:send_header("Access-Control-Allow-Origin", "*")
       res:finish()
       return true
     end
@@ -55,7 +57,7 @@ do
 
   local function runRequest(req, res)
     print("URL:", req.url)
-    if throttled(res) then return end
+    if throttled(req, res) then return end
     local context = {req=req, res=res, pluginNr=1}
     context.res.utils = utils
     executePlugin(context)
@@ -132,22 +134,27 @@ do
     print(node.heap())
     print("Content-Type", mimetype)
     res:send_header("Content-Type", mimetype)
+    utils.sendRawFile(req, res, sendFile, length)
+    --res:finish()
+  end
+
+
+  function utils.sendRawFile(req, res, sendFile, length, finishCB)
     local function f()
       collectgarbage()
       local buf = sendFile:read(256)
-      print("sending chunk", filename)
+      print("sending chunk")
       if buf then
         return buf, f
       end
-      print("done sending", filename)
+      print("done sending")
       sendFile:close()
-      -- implicitly return nil, nil
+      return "", function() finishCB() return nil end  -- discard any return values of finishCB
     end
     collectgarbage()
     print(node.heap())
     print("pushing first f")
-    res:send(f, length)   -- send length bytes served by data function f
-    res:finish()
+    res:finish(f, length)   -- send length bytes served by data function f
   end
 
 
@@ -282,7 +289,7 @@ WebServer.route("/info", function(req, res)
     res:send_header("Connection", "close")
     res:send_header("Content-Type", "text/json")
     res:send_header("Access-Control-Allow-Origin", "*")
-    local info = {name = config.name or "", heap = node.heap(), id = node.chipid()}
+    local info = {name = config.name or "", heap = node.heap(), id = node.chipid(), files = file.list()}
     info = sjson.encode(info)
     res:send(info)
     res:finish()
@@ -302,7 +309,7 @@ WebServer.route("/log", function(req, res)
     res:send_header("Access-Control-Allow-Origin", "*")
   print("about to send logs")
     res:send(sendLogs)
-    --res:finish()
+    res:finish()
 end)
 
 WebServer.routes("/log/.*", function(req, res)
