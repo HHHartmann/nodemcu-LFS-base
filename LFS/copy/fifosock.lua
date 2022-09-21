@@ -60,7 +60,11 @@ local function wrap(sock)
     -- we didn't ship above.  Ship now, if there's something to ship.
     if s ~= nil then
       if sslan == 0 then
-        sock:send(s)
+        if #s > 0 then
+          sock:send(s)
+        else
+          return ns or nil, true
+        end
       else
         print("sending ssla .. s ",#ssla, #s)
         sock:send(ssla .. s)
