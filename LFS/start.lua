@@ -28,7 +28,7 @@ local function startup()
   f:close()
 
 
-	pcall(function() require("LED-strip") end)
+	-- pcall(function() require("LED-strip") end) -- TODO integrate as optional early startup
 end
 
 local function logger()
@@ -85,6 +85,12 @@ local function httpServer()
 	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
 end
 
+local function fileDistribution()
+	print('Starting File Distribution')
+	dofile("FileDist.lua")
+	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
+end
+
 local function applicationStartup()
 	print('Starting ApplicationStart.lua')
   dofile("ApplicationStart.lua")
@@ -99,4 +105,4 @@ end
 print('calling bootprotect')
 
 
-dofile("bootprotect.lua").start(signalpin, 10,   logger, startup, startNetwork, netUtilities, gossipStartup, httpServer, applicationStartup)
+dofile("bootprotect.lua").start(signalpin, 10,   logger, startup, startNetwork, netUtilities, gossipStartup, httpServer, fileDistribution, applicationStartup)
