@@ -94,6 +94,9 @@ do
   local function autoRouteStaticPlugin(req, res, Next, params)
     local filename = (params.prefix or "") .. (req.url or ""):gsub("/","_")
     print("cheking file:", filename)
+    if #filename >= 32 then
+      return Next()
+    end
     local testFile = file.open(filename)
 
     if not testFile then
@@ -149,7 +152,7 @@ do
       end
       print("done sending")
       sendFile:close()
-      return "", function() finishCB() return nil end  -- discard any return values of finishCB
+      return "", function() if finishCB then finishCB() end return nil end  -- discard any return values of finishCB
     end
     collectgarbage()
     print(node.heap())
