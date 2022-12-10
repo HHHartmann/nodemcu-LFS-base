@@ -289,7 +289,10 @@ WebServer.route("/info", function(req, res)
     res:send_header("Connection", "close")
     res:send_header("Content-Type", "text/json")
     res:send_header("Access-Control-Allow-Origin", "*")
-    local info = {name = config.name or "", heap = node.heap(), id = node.chipid(), files = file.list()}
+    local lfsTimestamp = node.LFS.Timestamp and node.LFS.Timestamp() or ""
+    local info = {name = config.name or "", heap = node.heap(), id = node.chipid(), lfsTimestamp = lfsTimestamp,
+            fwVersion = node.info("sw_version").git_commit_dts,
+            modules = node.info("build_config").modules, files = file.list()}
     info = sjson.encode(info)
     res:send(info)
     res:finish()
@@ -416,6 +419,8 @@ WebServer.route("/compileAndSave", function(req, res)
     end
   end
 end)
+
+WebServer.staticRoute("www")
 
 
 WebServer.startWebServer(80)
