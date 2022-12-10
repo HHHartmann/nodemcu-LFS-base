@@ -3,17 +3,29 @@ print('start.lua')
 
 config = dofile("GetConfig.lua")
 
---node.egc.setmode(node.egc.ON_MEM_LIMIT, 4096)
+-- attention LUA 51 only
+--node.egc.setmode(node.egc.ON_MEM_LIMIT, -4096)
+--node.egc.setmode(node.egc.ON_ALLOC_FAILURE)
+
 wifi.setphymode(wifi.PHYMODE_N)
 
-local esp01 = node.chipid() == 1757122
 local signalPin = config.signalPin
--- signalPin = 4
-if esp01 then
-	signalPin = 10  -- on esp 01  =  GPIO1  =  TX
-end
 
 local function startup()
+
+  local errorFileName = "www_errors.txt"
+  node.setonerror(function(s)
+     collectgarbage()
+     local f = file.open(errorFileName, "a")
+     f:writeline("==========================: ")
+     f:writeline(s)
+     f:writeline("")
+     f:close()
+     print(s)
+     node.restart()
+  end)
+
+
 	gpio.mode(1,gpio.OUTPUT)
 	gpio.write(1,gpio.LOW)
 	gpio.mode(2,gpio.OUTPUT)
@@ -23,10 +35,23 @@ local function startup()
 	gpio.mode(4,gpio.OUTPUT)
 	gpio.write(4,gpio.LOW)
 
-  local f = file.open("www_errors.txt","a")
+  local f = file.open(errorFileName, "a")
   f:writeline("------------- "..sjson.encode({node.bootreason()}))
   f:close()
+  
+  if file.stat(errorFileName).size > 10000 then
+    if config.smallFs then
+      file.remove(errorFileName .. ".1")
+    else
+      file.remove(errorFileName .. ".2")
+      file.rename(errorFileName .. ".1", errorFileName .. ".2")
+    end
+    file.rename(errorFileName        , errorFileName .. ".1")
+  end
 
+  if config.smallFs then
+    file.remove("luac.out.fail")
+  end
 
 	-- pcall(function() require("LED-strip") end) -- TODO integrate as optional early startup
 end
@@ -102,7 +127,6 @@ local function startNetwork(cb)
   return true  -- actually return anything
 end
 
+
 print('calling bootprotect')
-
-
-dofile("bootprotect.lua").start(signalpin, 10,   logger, startup, startNetwork, netUtilities, gossipStartup, httpServer, fileDistribution, applicationStartup)
+dofile("bootprotect.lua").start(signalPin, 10,   logger, startup, startNetwork, netUtilities, gossipStartup, httpServer, fileDistribution, applicationStartup)

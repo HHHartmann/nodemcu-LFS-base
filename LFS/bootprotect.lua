@@ -67,6 +67,7 @@ end
 local steps, stepsStarted = nil, 0
 local stepsLastBoot = LastStepLastBoot()
 local RunSteps, finishStartup, lTimeout
+local lSignalPin
 
 local function RunNextStep()
   print("RunNextStep: steps left:", #steps)
@@ -78,17 +79,16 @@ local function RunNextStep()
 end
 
 local waitfunc = function(nextStep)
-  function stop()
-    steps = {}
-    stepsLastBoot = 9999
-  end
-
   tmr.create():alarm(lTimeout*1000 or 10000, tmr.ALARM_SINGLE ,function()
-      stop = nil
-      print('removing PANIC_GUARD')
-      RemoveGuard()
+      print('continuing boot')
       nextStep()
     end)
+  stepsLastBoot = 0 -- to allow RunSteps to skip over the wait condition
+  if lSignalPin then
+    pwm.setup(lSignalPin, 2, 0)
+    pwm.setduty(lSignalPin, 900)
+    pwm.start(lSignalPin)
+  end
   return true -- actually anything but nil to let the system know that we are executing async
 end
 
@@ -97,7 +97,6 @@ RunSteps = function(firstFunc, ...)
   if (stepsStarted +1 == stepsLastBoot) then
     print("Delaying boot due to invalid boot last time. Enter stop() to stop running further steps ")
     steps = {firstFunc, ...}
-    stepsLastBoot = 0
     waitfunc(RunNextStep)
     return
   end
@@ -111,23 +110,15 @@ RunSteps = function(firstFunc, ...)
 end
 
 finishStartup = function()
-  if stepsLastBoot > 0 then
-      if signalPin then
-        pwm.setup(signalPin, 2, 0)
-        pwm.setduty(signalPin, 900)
-        pwm.start(signalPin)
-      end
-      print('aborting autostart since stop() was called')
-      print('Wait for PANIC_GUARD removal and then')
-      print('just restart to resume normal operation')
-  end
-  
+  stop = nil
+
   tmr.create():alarm(lTimeout*1000 or 10000, tmr.ALARM_SINGLE ,function()
       print('removing PANIC_GUARD')
       RemoveGuard()
-      if signalPin then
-        pwm.close(signalPin)
-        gpio.write(signalPin, gpio.LOW);  -- turn light off permanently
+      if lSignalPin then
+        pwm.stop(lSignalPin)
+        pwm.close(lSignalPin)
+        gpio.write(lSignalPin, gpio.HIGH);  -- turn light off permanently
       end
     end)
 end
@@ -138,19 +129,26 @@ local protect = {}
 function protect.start(signalPin, timeout, ...)
 
   local startupFunctions = {...}
-  local dummy,reason = node.bootreason()
   lTimeout = timeout
+  lSignalPin = signalPin
   
-  print('bootreason: '..reason)
+  print('bootreason: ', node.bootreason())
   print("last boot step", stepsLastBoot)
   if not gpio or not pwm then
-    signalPin = nil
+    lSignalPin = nil
   end
-  if signalPin then
-    gpio.mode(signalPin, gpio.OUTPUT)
-    pwm.setup(signalPin, 1, 0)
-    pwm.setduty(signalPin, 512)
-    pwm.start(signalPin)
+  if lSignalPin then
+    gpio.mode(lSignalPin, gpio.OUTPUT)
+    pwm.setup(lSignalPin, 1, 0)
+    pwm.setduty(lSignalPin, 512)
+    pwm.start(lSignalPin)
+  end
+
+  function stop()
+    print('aborting autostart since stop() was called')
+    print('Wait for PANIC_GUARD removal and then')
+    print('just restart to resume normal operation')
+    steps = {}
   end
 
   RunSteps(unpack(startupFunctions))
