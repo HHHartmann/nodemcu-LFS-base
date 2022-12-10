@@ -1,4 +1,3 @@
-node.startup({command="ws2812.init(ws2812.MODE_SINGLE) ws2812.write(string.rep(string.char(0, 255, 0),31)) dofile('init.lua')"})
 print('init.lua')
 print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
 
@@ -24,11 +23,8 @@ if file.exists("luac.out.try") then
     print("LFS not loaded. reverting to last image")
     file.remove("luac.out.fail")
     file.rename("luac.out.try", "luac.out.fail")
-    file.rename("luac.out.old", "luac.out.try")
-    local result = node.flashreload('luac.out.try')
+    local result = node.flashreload('luac.out.old')
     print("Failed flashing last good image:", result)
-    file.remove("luac.out.fail_restore")
-    file.rename("luac.out.try", "luac.out.fail_restore")
   end
 end
 

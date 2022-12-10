@@ -1,17 +1,3 @@
-node.setonerror(function(s)
-     collectgarbage()
-     local f = file.open("www_errors.txt","a")
-     f:writeline("==========================: ")
-     f:writeline(s)
-     f:writeline("")
-     f:close()
-     print(s)
-     node.restart()
-  end)
-
-
-
-
 
 local syncPort = 7785
 local broadcastIp = "255.255.255.255"
@@ -24,6 +10,8 @@ local syncSocket
 local fileDist = {}
 local syncCheck
 local stateFileName = "FileDistState.json"
+
+local downloadInProgress = false
 
 local function loadState()
   local file = file.getcontents(stateFileName)
@@ -61,26 +49,50 @@ local function sendSyncReply(ip, data)
   sendData(ip, data, msgType.SYNCREPLY)
 end
 
-local downloadInProgress = false
 local function downloadFile(ip, syncFile, meta)
+  if meta.action == "delete" then
+    local state = loadState()
+    state[syncFile] = meta
+    saveState(state)
+    file.remove(syncFile)
+    print("removed", syncFile)
+    return syncCheck(state)
+  end
   print("downloadFile", syncFile)
   if downloadInProgress then
     print("download already in progress. Aborting.")
-    return
   end
   
-  downloadInProgress = true
   local firstRec, subsRec, finalise
   local n, total, size = 0, 0
   local saveFile
-  
+  local timeoutTmr
+  local connection
+
   local ondisconnect = function(connection)
     connection:on("receive", nil)
     connection:on("disconnection", nil)
+    timeoutTmr:unregister()
     downloadInProgress = false
+    syncCheck()
     collectgarbage("collect")
   end
   
+  downloadInProgress = true
+  timeoutTmr = tmr.create()
+  timeoutTmr:alarm(3000, tmr.ALARM_SINGLE, function()
+    print("Download timout reached")
+    if connection then
+      connection:close()
+      ondisconnect(connection)
+    else
+      downloadInProgress = false
+      syncCheck()
+      collectgarbage("collect")
+    end
+  end)
+
+
   local con = net.createConnection()
   con:on("connection",function(sck)
       local request = table.concat( {
@@ -102,6 +114,7 @@ local function downloadFile(ip, syncFile, meta)
 
   firstRec = function (sck,rec)
     -- Process the headers; only interested in content length
+    connection = sck
     local i      = rec:find('\r\n\r\n',1,true) or 1
     local header = rec:sub(1,i+1):lower()
     size         = tonumber(header:match('\ncontent%-length: *(%d+)\r') or 0)
@@ -115,15 +128,20 @@ local function downloadFile(ip, syncFile, meta)
       sck:on("disconnection", nil)
       sck:close()
       print("GET failed")
+      print(rec)
+      timeoutTmr:unregister()
       downloadInProgress = false
+      syncCheck()
     end
   end
 
   subsRec = function(sck,rec)
+    timeoutTmr:start(true)
     total, n = total + #rec, n + 1
     if n % 4 == 1 then
+      print("holding")
       sck:hold()
-      node.task.post(0, function() sck:unhold() end)
+      node.task.post(node.task.LOW_PRIORITY, function() print("unholding") sck:unhold() end)
     end
     print(('%u of %u, '):format(total, size))
     saveFile:write(rec)
@@ -154,16 +172,22 @@ local function downloadFile(ip, syncFile, meta)
         print("executing", meta.action)
         if meta.action == "reboot" then
           node.task.post(function() node.restart() end)
-        else 
+        elseif meta.action == "delete" then
+          -- nothing to do here. Should actually never be executed.
+        else
           if meta.action:sub(1,1) == "!" then
             print(pcall(load(meta.action:sub(2))))
           end
           syncCheck(state)
         end
+      else
+        syncCheck(state)
       end
     else
-      print"Invalid save of file"
+      print("Invalid save of file")
+      syncCheck()
     end
+    timeoutTmr:unregister()
     downloadInProgress = false
   end
 
@@ -188,11 +212,18 @@ local function getNewerFiles(this, other)
   return LINQ(other):where(hasNewer):toDict()
 end
 
+local function removeDummies(state)
+  state.lfsTimestamp = nil
+  state.fwVersion = nil
+end
+
 local function receiveSync(ip, updateData)
   collectgarbage()
   local state = loadState()
   print("receiveSync updateData", sjson.encode(updateData))
   print("receiveSync state", sjson.encode(state))
+  removeDummies(state)
+  removeDummies(updateData)
   local newerFiles =  getNewerFiles(updateData, state)
   print("receiveSync newerFiles", sjson.encode(newerFiles))
   if LINQ(newerFiles):first() then
@@ -209,6 +240,8 @@ local function receiveSyncReply(ip, updateData)
   local state = loadState()
   print("receiveSyncReply updateData", sjson.encode(updateData))
   print("receiveSyncReply state", sjson.encode(state))
+  removeDummies(state)
+  removeDummies(updateData)
   local syncFile, meta = LINQ(getNewerFiles(state, updateData)):first()
   if syncFile then
     downloadFile(ip, syncFile, meta)
@@ -216,6 +249,10 @@ local function receiveSyncReply(ip, updateData)
 end
 
 function receiveData(socket, data, port, ip)
+  if downloadInProgress then
+    print("download in Progress. Ignoring FileDist packet")
+    return
+  end
   print("received", ip, data)
   local success, result = pcall(function() return sjson.decode(data) end )
   if not success then
@@ -233,11 +270,15 @@ function receiveData(socket, data, port, ip)
   end
 end
 
+local lastSyncCheck = 0
 syncCheck = function(state)  -- state may be nil
-  node.task.post(0, function()
-      state = state or loadState()
-      sendSync(broadcastIp, state)
-  end)
+  if lastSyncCheck < tmr.time() then
+    lastSyncCheck = tmr.time()
+    node.task.post(node.task.LOW_PRIORITY, function()
+        state = state or loadState()
+        sendSync(broadcastIp, state)
+    end)
+  end
 end
 
 function fileDist.Start()
@@ -246,33 +287,78 @@ function fileDist.Start()
     syncSocket:listen(syncPort);
     syncSocket:on('receive', receiveData);
   end
+
+  if config.smallFs then
+    LINQ(file.list("^~")):select(function(k,v) print("removing", k) file.remove(k) return k,v end):count()
+  end
+
+  local state = loadState()
+  local changed = false
+
+  local lfsTimestamp = node.LFS.Timestamp and node.LFS.Timestamp() or ""
+  if not state.lfsTimestamp or state.lfsTimestamp.version ~= lfsTimestamp then
+    state.lfsTimestamp = { version = lfsTimestamp }
+    changed = true
+  end
   
-  syncCheck()
+  local fwVersion = node.info("sw_version").git_commit_dts
+  if not state.fwVersion or state.fwVersion.version ~= fwVersion then
+    state.fwVersion = { version = fwVersion }
+    changed = true
+  end
+
+  -- TODO remove cleanup after cleanup is done
+  state = LINQ(state):select(function(k,v) v.filesize = nil v.hash = nil return k,v end):toDict()
+  changed = true
+
+  if changed then
+    saveState(state)
+  end
+
+  syncCheck(state)
+end
+
+function fileDist.Invalidate(filename)
+  local state = loadState()
+  if state[filename] then
+    state[filename].version = 0
+    saveState(state)
+  else
+    print("File not in list")
+  end
+  syncCheck(state)
+  return collectgarbage()
 end
 
 function fileDist.Deploy(filename, action)
   local s = file.stat(filename)
-  if not s then
+  if action == "delete" then
+    if s then
+      print("file exists")
+      return
+    end
+  elseif not s then
     print("file does not exist")
     return
   end
 
+  local size = (s and s.size) or 0
   local state = loadState()
   if state[filename] then
     state[filename].version = state[filename].version +1
-    state[filename].size = s.size
+    state[filename].size = size
     if action then
       state[filename].action = action
     end
   else
     state[filename] = {
-      hash = "cxbcdzuf6347",
       version = 1,
       action = action,
-      size = s.size
+      size = size
     }
   end
   saveState(state)
+  syncCheck(state)
   return collectgarbage()
 end
 
@@ -280,17 +366,18 @@ local ServingFile = false
 WebServer.routes("/download/.*", function(req, res)
     collectgarbage()
     filename = req.url:gsub("/download/","")
+    local length
     if ServingFile then
       print("serving allready in progress. not serving", filename)
+      syncCheck()
     else
       print("serving", filename)
       ServingFile = true
+      length = file.stat(filename)
     end
 
-    local sendFile = file.open(filename)
-    local length = file.stat(filename)
     if not length then
-      print("file not found", filename)
+      print("file not found or allready in progress", filename)
       res:send(nil, 404)
       res:send_header("Access-Control-Allow-Origin", "*")
       res:send_header("Connection", "close")
@@ -301,13 +388,14 @@ WebServer.routes("/download/.*", function(req, res)
     end
     
     length = length.size
+    local sendFile = file.open(filename)
 
     res:send(nil, 200)
     res:send_header("Connection", "close")
     res:send_header("Access-Control-Allow-Origin", "*")
     res:send_header("Content-Type", "application/octet-stream")
   
-    res.utils.sendRawFile(req, res, sendFile, length, function() print("finished servicng file", filename) ServingFile = false end)
+    res.utils.sendRawFile(req, res, sendFile, length, function() print("finished serving file", filename) ServingFile = false end)
     return collectgarbage()
 end)
 
@@ -333,77 +421,7 @@ WebServer.routes("/deploy/.*", function(req, res)
 end)
 
 
-FileDist=fileDist  -- TODO debug only
+FileDist=fileDist
 fileDist.Start()  -- TODO debug only
 
 return fileDist
-
---[[
-{
-	"filename": {
-		"hash": "cxbcdzuf6347",
-		"version": 123,
-		"action": "reboot/none",
-    "size": 123
-	}
-}
-
-
-note: all sync sends are UDP broadcasts
-
-
-Receive SyncCheck:
-  check against own state table
-  If has_newer_files 
-    wait random timespan (0-1 sec)
-    if no suficchient update info has been sent by other receiver
-      send partial state table with updated files
-  If has_older_files
-    Download
-
-the download filename is something like "{version}_{filename}.part"
-Watch out for max filename length
-
-Download:
-  if download file does not exist
-    create download file
-  Continue Download
-
-Continue Download:
-  send stream request with start block to server which sent newer file information (first block is 1 as allways in lua)
-  # might make sense to use/enhance http server for that
-  # implement filter part to "auth" download requests
-  
-Receive Stream Request:
-  send required blocks in ascending order
-  ## each message contain filename and block
-  ## or see above for tcp usage
-
-
-Receive Stream Block:
-  Write to file
-  if file has correct length
-    if file has correct checksum
-      rename in place
-      update current state table
-      perform action (reboot/none)
-      Initiate SyncCheck
-    else
-      set downloaded file to 0 bytes length
-
-
-Possible states at boot after reset
-
-started file exists
-  will continue to download after SyncCheck. If no answer it will just remain in Place.
-
-
-
-In dev, files are uploaded by other mechanisms.
-To deploy them a function is called which checks the hashes of all local files against the current state table.
-If the hash differs a new version is created by incrementing the "version", replacing the hash and calling `Initiate SyncCheck`.
-To add entirely new files another function is called.
-
-
-
-]]

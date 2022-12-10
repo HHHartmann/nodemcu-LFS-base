@@ -23,6 +23,8 @@ if config.devices and config.devices[chipid] then
     copy(config.HW[config.devices[chipid].HW], result, true)
   end
   copy(config.devices[chipid], result, true)
+else
+  print("No configuration found for chip id:", chipid)
 end
 
 config = nil

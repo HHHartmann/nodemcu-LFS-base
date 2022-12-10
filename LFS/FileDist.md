@@ -1,6 +1,5 @@
 {
 	"filename": {
-		"hash": "cxbcdzuf6347",
 		"version": 123,
 		"action": "reboot/none",
     "filesize": 123

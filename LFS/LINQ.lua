@@ -1,6 +1,5 @@
 
 
-
   local new
 
   local function first(self)
@@ -120,8 +119,6 @@
   end
 
 local function LINQ(dict)
-
-
   local iterf = pairs(dict)
   local last = nil
   local function iter()
