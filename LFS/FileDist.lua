@@ -144,8 +144,18 @@ local function downloadFile(ip, syncFile, meta)
       node.task.post(node.task.LOW_PRIORITY, function() print("unholding") sck:unhold() end)
     end
     print(('%u of %u, '):format(total, size))
-    saveFile:write(rec)
-    if total >= size then finalise(sck) end
+    if saveFile then
+      saveFile:write(rec)
+      if total >= size then finalise(sck) end
+    else
+      print("saveFile is null unexpectedly. Aborting")
+      timeoutTmr:unregister()
+      downloadInProgress = false
+      sck:on("receive", nil)
+      sck:on("disconnection", nil)
+      sck:close()
+      syncCheck()
+    end
   end
 
   finalise = function(sck)
