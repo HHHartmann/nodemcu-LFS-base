@@ -6,6 +6,7 @@
 ------------------------------------------------------------------------------
 local tonumber = tonumber
 
+LINQ = dofile("LINQ.lua")
 
 local WebServer = require("WebServer")
 
@@ -25,14 +26,21 @@ local WebServer = require("WebServer")
 
 
 local function redirectHostToIp(req, res, Next, params)
+  print("found host header:", req.headers["host"])
   if req.headers and req.headers["host"] == params.hostname then
-    print("detected hostname. Will send redirect in next version")
+    local newUrl = "http://"..wifi.sta.getip()..req.url
+    print("redirecting to", newUrl)
+    res:send(nil, 302)  -- redirect temporary
+    res:send_header("Connection", "close")
+    res:send_header("Location", newUrl)
+    res:send_header("Access-Control-Allow-Origin", "*")
+    res:finish()
+  else
+    return Next()
   end
-  return Next()
 end
 
-WebServer.use(redirectHostToIp, {hostname = "nodemcu"})
-
+WebServer.use(redirectHostToIp, {hostname = "nodemcu.local"})
 
 
 
@@ -49,6 +57,33 @@ WebServer.route("/info", function(req, res)
     res:send(info)
     res:finish()
 end)
+
+
+WebServer.route("/knownIps", function(req, res)
+    collectgarbage()
+    res:send(nil, 200)
+    res:send_header("Connection", "close")
+    res:send_header("Access-Control-Allow-Origin", "*")
+    res:send_header("Content-Type", "application/json")
+    if discoveryGossip then
+      local function isValidData(k,v)
+        return v.state < 4 --[[ remove ]] and v.data
+      end
+      local function selectIps(k,v)
+        return k, v.data
+      end
+      
+      local ips = LINQ(discoveryGossip.networkState):where(isValidData):select(selectIps):toDict()
+      res:send(sjson.encode(ips))
+    else
+      res:send("[]")
+    end
+    res:finish()
+    return collectgarbage()
+end)
+
+
+
 
 local function sendLogs()
   local buf = Logger.getlog()

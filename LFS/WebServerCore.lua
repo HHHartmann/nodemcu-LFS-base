@@ -11,6 +11,7 @@ local WebServerCore = {}
 do
 
   local plugins = {}
+  local headers = {}
 
   -- forward declaration
   local nextFunc
@@ -68,6 +69,8 @@ do
     print("URL:", req.url)
     if throttled(req, res) then return end
     context = {req=req, res=res, pluginNr=1}
+    req.headers = {}
+    req.onheader = function(_, name, value) if name == "host" then req.headers[name] = value end end
     req.ondata = function(req, chunk) dataAwaiter(req, chunk) end
   end
 
@@ -80,16 +83,17 @@ do
   if the request is not handled by any plugin.
 
   usage:
-      use(route, {url="/info", exec=SendInfo })
+      use(route, {url="/info", exec=SendInfo }, ["host"])
           params can be used to transport data to the plugin.
             "desc" is shown when registering
-            "headers" is a list of heders which are collected if givn in tha request
+          headers is an array of headers which are collected if given in the request
             headers will be collected in req.headers
           
   ]]
-  local function use(plugin, params)
+  local function use(plugin, params, headers)
     print("Adding plugin nr", #plugins+1, params and params.desc )
     plugins[#plugins+1] = {plugin=plugin, params=params}
+    headers = headers
   end
 
 

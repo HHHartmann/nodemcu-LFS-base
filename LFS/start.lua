@@ -51,6 +51,7 @@ local function startup()
 
   if config.smallFs then
     file.remove("luac.out.fail")
+    file.remove("luac.out.old")
   end
 
 	-- pcall(function() require("LED-strip") end) -- TODO integrate as optional early startup
@@ -95,12 +96,29 @@ local function gossipStartup()
         debugOutput = function(message) print('Gossip says: ', message); end
     }
 
-    gossip = require ("gossip")
+    gossip = dofile("gossip.lua")
     gossip.setConfig(gossipConfig)
     gossipConfig = nil
     gossip.start()
     gossip.pushGossip(nil, '255.255.255.255')  -- broadcast to announce new instance
   end
+
+  print('Starting discovery gossip')
+  local gossipConfig = {
+      seedList = {},
+      roundInterval = 60000,
+      comPort = 5001,
+      debug = true,
+      debugOutput = function(message) print('Gossip says: ', message); end
+  }
+
+  discoveryGossip = dofile("gossip.lua")
+  discoveryGossip.setConfig(gossipConfig)
+  gossipConfig = nil
+  discoveryGossip.start()
+  discoveryGossip.pushGossip(node.chipid(), '255.255.255.255')  -- broadcast to announce new instance
+
+
 end
 
 local function httpServer()

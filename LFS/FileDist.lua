@@ -258,7 +258,7 @@ local function receiveSyncReply(ip, updateData)
   end
 end
 
-function receiveData(socket, data, port, ip)
+local function receiveData(socket, data, port, ip)
   if downloadInProgress then
     print("download in Progress. Ignoring FileDist packet")
     return
@@ -405,7 +405,7 @@ WebServer.routes("/download/.*", function(req, res)
     res:send_header("Access-Control-Allow-Origin", "*")
     res:send_header("Content-Type", "application/octet-stream")
   
-    res.utils.sendRawFile(req, res, sendFile, length, function() print("finished serving file", filename) ServingFile = false end)
+    WebServer.utils.sendRawFile(req, res, sendFile, length, function() print("finished serving file", filename) ServingFile = false end)
     return collectgarbage()
 end)
 
@@ -429,7 +429,6 @@ WebServer.routes("/deploy/.*", function(req, res)
     end
     return collectgarbage()
 end)
-
 
 FileDist=fileDist
 fileDist.Start()  -- TODO debug only
