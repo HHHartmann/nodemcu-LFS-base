@@ -199,6 +199,8 @@ do
         -- ondata(conn) is called
         body_len = body_len + #chunk
         -- print("-B", #chunk, body_len, cnt_len, node.heap())
+        -- check again as it might have been removed in the above ondata call
+        if not req or not req.ondata then return end
         if body_len >= cnt_len then
           req:ondata()
         end

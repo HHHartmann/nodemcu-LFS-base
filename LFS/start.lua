@@ -106,7 +106,7 @@ end
 local function httpServer()
 	print('Starting http server')
 	--dofile("IDESupport.lua")
-	dofile("WebServer.lua")
+	dofile("StartWebServer.lua")
 	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
 end
 
