@@ -4,6 +4,16 @@ if not file.exists("config.json") then
   return {debug = true, runLogger = true, runFTPServer = true, runTelnetServer = true}
 end
 
+local configSize = file.stat("config.json").size
+
+if file.exists("config_local.json") then
+  local local_config = sjson.decode(file.getcontents("config_local.json"))
+  if configSize == local_config.configSize then
+    print("configuration from cached file:", sjson.encode(local_config))
+    return local_config
+  end
+end
+
 
 local function copy(source, dest, includeTables)
   for k,v in pairs(source) do
@@ -12,7 +22,6 @@ local function copy(source, dest, includeTables)
     end
   end
 end
-
 
 local config = sjson.decode(file.getcontents("config.json"))
 local chipid = tostring(node.chipid())
@@ -28,5 +37,8 @@ else
 end
 
 config = nil
-print("configuration:", sjson.encode(result))
+result.configSize = configSize
+configJSON = sjson.encode(result)
+file.putcontents("config_local.json", configJSON)
+print("configuration from new config:", configJSON)
 return result
