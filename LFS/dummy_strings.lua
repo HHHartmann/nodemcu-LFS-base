@@ -31,4 +31,7 @@ end
 local preload="\5","%q","(.*)%.l[uc]a?$","(for index)","(for limit)","(for step)",
 "=stdin","?.lc;?.lua","@_init.lua",
 "API for '/compileAndSave'","API for '/info'","API for '/log'","API for '/restart'","API for '/status'","APIs for '/log/.*'",
-"Cannot find '%s' in FS or LFS","DevBoard1","Gartensensor","LUABOX","Lua 5.3","RAM","_LOADED","_PRELOAD","_VERSION","__name","crypto.hash","file.obj","file.vol","gpio.pulse","loaders","loadfile","net.tcpserver","net.tcpsocket","net.udpsocket","onerror","pixbuf.buf","searchers","searchpath","sjson.decoder","sjson.encoder","static for 'www'","stdin","tmr.timer","wifi.packet" 
+"Cannot find '%s' in FS or LFS","DevBoard1","Gartensensor","LUABOX","Lua 5.3","RAM","_LOADED","_PRELOAD","_VERSION","__name","crypto.hash","file.obj","file.vol","gpio.pulse","loaders","loadfile","net.tcpserver","net.tcpsocket","net.udpsocket","onerror","pixbuf.buf","searchers","searchpath","sjson.decoder","sjson.encoder","static for 'www'","stdin","tmr.timer","wifi.packet" ,
+
+
+"11264530", "13175857", "15683021", "2719629", "3649586", "3849658", "3860104", "3942779", "5937828", "ALRM", "BasicR2", "Batt1", "BatteryPack", "DevBoard1", "HW", "Indoor", "Keller", "Kellersensor", "LED-KellerTreppe", "LED-strip-remote.lua", "Meter.lua", "SEN", "Schalter1", "Schreibtisch", "Sensor.lua", "VEN", "Ventilator", "Wasser.lua", "Wasser Alarm", "Wasser Sensor", "WemosD1", "__runGossip", "__startup", "_startup", "addr", "alarm", "busId", "channels", "debug", "der neue", "devices", "layout", "leds", "location", "name", "pinHigh", "pinLow", "pushButtonPin", "relais", "relaisPin", "runFTPServer", "runGossip", "runLogger", "runTelnetServer", "scl", "sda", "sensors", "signalPin", "smallFs", "startup", "type"

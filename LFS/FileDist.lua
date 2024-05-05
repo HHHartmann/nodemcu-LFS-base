@@ -35,17 +35,17 @@ local function sendData(ip, data, sendType)
   local dataToSend = sjson.encode(data)
   data.type = nil
   syncSocket:send(syncPort, ip, dataToSend)
-  print("Sent ", #dataToSend, " bytes")
+  Log.LogTrace("Sent ", #dataToSend, " bytes")
 --  receiveData(nil, dataToSend, syncPort, ip)  -- TODO debug only
 end
 
 local function sendSync(ip, data)
-  print("sendSync", ip, sjson.encode(data))
+  Log.LogTrace("sendSync", ip, data)
   sendData(ip, data, msgType.SYNC)
 end
 
 local function sendSyncReply(ip, data)
-  print("sendSyncReply", sjson.encode(data))
+  Log.LogTrace("sendSyncReply", sjson.encode(data))
   sendData(ip, data, msgType.SYNCREPLY)
 end
 
@@ -55,12 +55,12 @@ local function downloadFile(ip, syncFile, meta)
     state[syncFile] = meta
     saveState(state)
     file.remove(syncFile)
-    print("removed", syncFile)
+    Log.LogDebug("removed", syncFile)
     return syncCheck(state)
   end
-  print("downloadFile", syncFile)
+  Log.LogDebug("downloadFile", syncFile)
   if downloadInProgress then
-    print("download already in progress. Aborting.")
+    Log.LogTrace("download already in progress. Aborting.")
   end
   
   local firstRec, subsRec, finalise
@@ -81,7 +81,7 @@ local function downloadFile(ip, syncFile, meta)
   downloadInProgress = true
   timeoutTmr = tmr.create()
   timeoutTmr:alarm(3000, tmr.ALARM_SINGLE, function()
-    print("Download timout reached")
+    Log.LogDebug("Download timeout reached")
     if connection then
       connection:close()
       ondisconnect(connection)
@@ -103,7 +103,7 @@ local function downloadFile(ip, syncFile, meta)
         "Host: "..ip,
         "Connection: close",
         "", ""}, "\r\n")
-      print(request)
+      Log.LogTrace(request)
       collectgarbage()
       sck:send(request)
       sck:on("receive", firstRec)
@@ -118,7 +118,7 @@ local function downloadFile(ip, syncFile, meta)
     local i      = rec:find('\r\n\r\n',1,true) or 1
     local header = rec:sub(1,i+1):lower()
     size         = tonumber(header:match('\ncontent%-length: *(%d+)\r') or 0)
-    print(rec:sub(1, i+1))
+    Log.LogTrace(rec:sub(1, i+1))
     if size > 0 then
       sck:on("receive",subsRec)
       saveFile = file.open("~"..syncFile, 'w')
@@ -127,8 +127,8 @@ local function downloadFile(ip, syncFile, meta)
       sck:on("receive", nil)
       sck:on("disconnection", nil)
       sck:close()
-      print("GET failed")
-      print(rec)
+      Log.LogDebug("GET failed")
+      Log.LogTrace(rec)
       timeoutTmr:unregister()
       downloadInProgress = false
       syncCheck()
@@ -139,16 +139,16 @@ local function downloadFile(ip, syncFile, meta)
     timeoutTmr:start(true)
     total, n = total + #rec, n + 1
     if n % 4 == 1 then
-      print("holding")
+      Log.LogTrace("holding")
       sck:hold()
-      node.task.post(node.task.LOW_PRIORITY, function() print("unholding") sck:unhold() end)
+      node.task.post(node.task.LOW_PRIORITY, function() Log.LogTrace("unholding") sck:unhold() end)
     end
-    print(('%u of %u, '):format(total, size))
+    Log.LogTrace(('%u of %u, '):format(total, size))
     if saveFile then
       saveFile:write(rec)
       if total >= size then finalise(sck) end
     else
-      print("saveFile is null unexpectedly. Aborting")
+      Log.LogDebug("saveFile is null unexpectedly. Aborting")
       timeoutTmr:unregister()
       downloadInProgress = false
       sck:on("receive", nil)
@@ -169,9 +169,9 @@ local function downloadFile(ip, syncFile, meta)
       local destFile = syncFile
       if destFile == "luac.out.old" then
         destFile = "luac.out"
-        print("finalizing", syncFile, "as", destFile)
+        Log.LogDebug("finalizing", syncFile, "as", destFile)
       else
-        print("finalizing", syncFile)
+        Log.LogDebug("finalizing", syncFile)
       end
       file.remove(destFile)
       file.rename("~"..syncFile, destFile)
@@ -179,14 +179,14 @@ local function downloadFile(ip, syncFile, meta)
       state[syncFile] = meta
       saveState(state)
       if meta.action and #meta.action >= 1 then
-        print("executing", meta.action)
+        Log.LogDebug("executing", meta.action)
         if meta.action == "reboot" then
           node.task.post(function() node.restart() end)
         elseif meta.action == "delete" then
           -- nothing to do here. Should actually never be executed.
         else
           if meta.action:sub(1,1) == "!" then
-            print(pcall(load(meta.action:sub(2))))
+            Log.LogDebug(pcall(load(meta.action:sub(2))))
           end
           syncCheck(state)
         end
@@ -194,7 +194,7 @@ local function downloadFile(ip, syncFile, meta)
         syncCheck(state)
       end
     else
-      print("Invalid save of file")
+      Log.LogDebug("Invalid save of file")
       syncCheck()
     end
     timeoutTmr:unregister()
@@ -206,16 +206,16 @@ end
 local function getNewerFiles(this, other)
   local function isNewer(old, new)
   collectgarbage()
-    print(old, new)
-    print("old", old and (sjson.encode(old)))
-    print("new", new and (sjson.encode(new)))
+    Log.LogTrace(old, new)
+    Log.LogTrace("old", old and (sjson.encode(old)))
+    Log.LogTrace("new", new and (sjson.encode(new)))
     if not old then return true end
     if not new then return false end
     return old.version < new.version
   end
 
   local function hasNewer(k,v)
-    print("hasNewer", k, sjson.encode(v))
+    Log.LogTrace("hasNewer", k, sjson.encode(v))
     return isNewer(this[k], v)
   end
 
@@ -230,12 +230,12 @@ end
 local function receiveSync(ip, updateData)
   collectgarbage()
   local state = loadState()
-  print("receiveSync updateData", sjson.encode(updateData))
-  print("receiveSync state", sjson.encode(state))
+  Log.LogTrace("receiveSync updateData", updateData)
+  Log.LogTrace("receiveSync state", state)
   removeDummies(state)
   removeDummies(updateData)
   local newerFiles =  getNewerFiles(updateData, state)
-  print("receiveSync newerFiles", sjson.encode(newerFiles))
+  Log.LogDebug("receiveSync newerFiles", newerFiles)
   if LINQ(newerFiles):first() then
     sendSyncReply(ip, newerFiles)
   end
@@ -248,8 +248,8 @@ end
 local function receiveSyncReply(ip, updateData)
   collectgarbage()
   local state = loadState()
-  print("receiveSyncReply updateData", sjson.encode(updateData))
-  print("receiveSyncReply state", sjson.encode(state))
+  Log.LogTrace("receiveSyncReply updateData", updateData)
+  Log.LogTrace("receiveSyncReply state", state)
   removeDummies(state)
   removeDummies(updateData)
   local syncFile, meta = LINQ(getNewerFiles(state, updateData)):first()
@@ -260,13 +260,13 @@ end
 
 local function receiveData(socket, data, port, ip)
   if downloadInProgress then
-    print("download in Progress. Ignoring FileDist packet")
+    Log.LogTrace("download in Progress. Ignoring FileDist packet")
     return
   end
-  print("received", ip, data)
+  Log.LogDebug("received", ip, data)
   local success, result = pcall(function() return sjson.decode(data) end )
   if not success then
-    print('Invalid JSON received from ', ip, data, result)
+    Log.LogError('Invalid JSON received from ', ip, data, result)
     return
   end
   local updateType = result.type
@@ -276,7 +276,7 @@ local function receiveData(socket, data, port, ip)
   elseif updateType == msgType.SYNCREPLY then
     receiveSyncReply(ip, result)
   else
-    print('Invalid data comming from ip', ip, '. Invalid type specified:', updateType)
+    Log.LogError('Invalid data comming from ip', ip, '. Invalid type specified:', updateType)
   end
 end
 
@@ -299,7 +299,7 @@ function fileDist.Start()
   end
 
   if config.smallFs then
-    LINQ(file.list("^~")):select(function(k,v) print("removing", k) file.remove(k) return k,v end):count()
+    LINQ(file.list("^~")):select(function(k,v) Log.LogTrace("removing", k) file.remove(k) return k,v end):count()
   end
 
   local state = loadState()
@@ -378,16 +378,16 @@ WebServer.routes("/download/.*", function(req, res)
     filename = req.url:gsub("/download/","")
     local length
     if ServingFile then
-      print("serving allready in progress. not serving", filename)
+      Log.LogTrace("serving already in progress. not serving", filename)
       syncCheck()
     else
-      print("serving", filename)
+      Log.LogDebug("serving", filename)
       ServingFile = true
       length = file.stat(filename)
     end
 
     if not length then
-      print("file not found or allready in progress", filename)
+      Log.LogTrace("file not found or already in progress", filename)
       res:send(nil, 404)
       res:send_header("Access-Control-Allow-Origin", "*")
       res:send_header("Connection", "close")
@@ -405,7 +405,7 @@ WebServer.routes("/download/.*", function(req, res)
     res:send_header("Access-Control-Allow-Origin", "*")
     res:send_header("Content-Type", "application/octet-stream")
   
-    WebServer.utils.sendRawFile(req, res, sendFile, length, function() print("finished serving file", filename) ServingFile = false end)
+    WebServer.utils.sendRawFile(req, res, sendFile, length, function() Log.LogDebug("finished serving file", filename) ServingFile = false end)
     return collectgarbage()
 end)
 

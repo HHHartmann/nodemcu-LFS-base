@@ -1,5 +1,6 @@
 print('start.lua')
 
+dofile("Log.lua")
 
 config = dofile("GetConfig.lua")
 
@@ -60,40 +61,40 @@ end
 local function logger()
   Logger = require("Logger")
   if config.runLogger then
-    print("activating Logger")
+    Log.LogTrace("activating Logger")
     Logger.start()
   else
-    print("deactivating Logger")
+    Log.LogTrace("deactivating Logger")
     Logger.stop()
   end
 end
 
 local function netUtilities()
 	
-	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
+	Log.LogDebug('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
 
   if config.runFTPServer then
-    print('Starting ftp server')
+    Log.LogTrace('Starting ftp server')
 
     require("ftpserver").createServer("test","12345","dbg")
   end
 
   if config.runTelnetServer then
-    print('Starting telnet server')
+    Log.LogTrace('Starting telnet server')
     require("telnet"):open()
-    print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
+    Log.LogDebug('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
   end
 end
 
 local function gossipStartup()
   if config.runGossip then
-    print('Starting gossip')
+    Log.LogTrace('Starting gossip')
     local gossipConfig = {
         seedList = {},
         roundInterval = 30000,
         comPort = 5000,
         debug = true,
-        debugOutput = function(message) print('Gossip says: ', message); end
+        debugOutput = function(message) Log.LogDebug('Gossip says: ', message); end
     }
 
     gossip = dofile("gossip.lua")
@@ -103,13 +104,13 @@ local function gossipStartup()
     gossip.pushGossip(nil, '255.255.255.255')  -- broadcast to announce new instance
   end
 
-  print('Starting discovery gossip')
+  Log.LogTrace('Starting discovery gossip')
   local gossipConfig = {
       seedList = {},
       roundInterval = 60000,
       comPort = 5001,
       debug = true,
-      debugOutput = function(message) print('Gossip says: ', message); end
+      debugOutput = function(message) Log.LogDebug('Gossip says: ', message); end
   }
 
   discoveryGossip = dofile("gossip.lua")
@@ -122,22 +123,26 @@ local function gossipStartup()
 end
 
 local function httpServer()
-	print('Starting http server')
+	Log.LogTrace('Starting http server')
 	--dofile("IDESupport.lua")
 	dofile("StartWebServer.lua")
-	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
+	Log.LogDebug('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
 end
 
 local function fileDistribution()
-	print('Starting File Distribution')
+	Log.LogTrace('Starting File Distribution')
 	dofile("FileDist.lua")
-	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
+	Log.LogDebug('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
 end
 
 local function applicationStartup()
-	print('Starting ApplicationStart.lua')
+	Log.LogTrace('Starting ApplicationStart.lua')
   dofile("ApplicationStart.lua")
-	print('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
+	Log.LogDebug('heap: ',node.heap(),(function() collectgarbage() return node.heap() end) ())
+
+  if not config.debug then
+    Log.SetLogLevel(Log.Silent)
+  end
 end
 
 local function startNetwork(cb)
@@ -146,5 +151,5 @@ local function startNetwork(cb)
 end
 
 
-print('calling bootprotect')
+Log.LogTrace('calling bootprotect')
 dofile("bootprotect.lua").start(signalPin, 10,   logger, startup, startNetwork, netUtilities, gossipStartup, httpServer, fileDistribution, applicationStartup)
